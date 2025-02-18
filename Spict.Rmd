@@ -1,0 +1,325 @@
+---
+title: "Interactive Session: playing with a model to assess fish population status"
+subtitle: ""
+author: "Cousido-Rocha, M."
+date: ""
+output:
+  bookdown::html_document2:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Surplus production models (SPMs) structure
+
+
+Russell (1931) described the change in biomass of an exploited fish stock in terms of a balance among recruitment, growth, fishing mortality, and natural mortality:
+
+$$
+B_{t+1} = B_t + (R_t + G_t) - (C_t + M_t)
+$$
+
+where:
+
+- \( B_t \) is the stock biomass in year \( t \).
+- \( R_t \) is the total weight of all individuals recruiting to the stock in year \( t \).
+- \( G_t \) is the total growth in biomass of individuals already recruited to the stock during the year.
+- \( C_t \) is the total weight of all fish caught.
+- \( M_t \) is the total weight of all fish that die of natural causes during the year.
+
+SPMs general structure (discrete form) relates directly to Russell’s formulation of the stock dynamics:
+
+\begin{equation}
+B_{t+1}=B_t+f(B_t)-C_t
+\end{equation}
+
+where $B_{t+1}$ is the stock biomass at the beginning of
+year $t + 1$, $B_t$ is the stock biomass at the start of year $t$, $C_t$ is the biomass
+caught during
+year $t$ and $f(B_t)$ is the production function that combines the general effects of growth, recruitment and mortality into a single function. 
+ 
+ 
+The population dynamics equation is linked to observations through the relation between the catches and the stock biomass across the catchability coefficient $q$ defined as the proportion of the total stock taken by one unit of effort. Set $E_t$ the effort associated to the catch $C_t$, then 
+
+\begin{equation}
+{I}_t=C_t/E_t=qB_t
+\end{equation}
+where  $I_t$ is an index of relative biomass for year $t$ and $q$ is the catchability
+coefficient, which scales the modelled stock biomass to match the trends in catch rates.
+
+
+There are many formulations of the production of biomass function $f(B_t)$. Schaefer (1954) provided the first simple model through the use of the logistic curve for describing the production of biomass.
+
+\begin{equation}
+f(B_t)=rB_t\left(1-\dfrac{B_t}{K}\right),
+\end{equation}
+where $B_t$ is the stock biomass at time $t$, $r$ is the population growth rate parameter (intrinsic rate of natural increase), and $K$ is the maximum population size for growth to be positive (the virgin biomass concept related to the carrying capacity). The maximum production in Schaefer formulation is attained at $K/2$ since the logistic curve generates a symmetric production curve (see Figure 1). Due to this fact, Schaefer formulation can be considered too restricted, and hence Pella and Tomlinson (1969) introduced a new parameter $n$ in the logistic formulation allowing asymmetry in the production curve.
+
+\begin{equation}
+f(B_t)=\dfrac{r}{n-1}B_t\left(1-\left(\dfrac{B_t}{K}\right)^{n-1}\right).
+\end{equation}
+
+
+![Figure 1: Influence of the parameter $n$ on the Pella–Tomlinson function. When $n = 2$, the equation is equivalent to the Schaefer model,
+			and thus has a symmetrical production curve around 0.5. Values of $n < 2$
+			skew the curve to the left and values $>2$ skew it to the right.
+](image/ps.png)
+
+The maximum production can take place at different fractions of $K$ (see Figure 1). The asymmetry parameter, $n$, is difficult to estimate accurately, then, in practice, a sensitive analysis of this parameter should be carried out.
+
+
+
+# SPiCT (stochastic surplus production model in continuous time) description
+
+SPM research over the last few years has resulted in a
+collection of different SPM implementations. Here, the SPiCT implementation is used, a continuous-time stochastic surplus production model that models both biomass and fishing dynamics as states, which are observed indirectly
+through biomass indices and commercial
+catches sampled with error (Perdesen et al., 2017 and Cousido-Rocha et al., 2022). In addition, SPiCT considers observation error of both catches and
+biomass indices whereas in previous models the catch
+observations are assumed error-free. 
+
+
+
+# SPiCT tutorial
+
+## Input data 
+
+The minimum data required by SPiCT are:
+
+* an index of relative exploitable biomass 
+* and a time series of associated catch data (observations of commercial catches). 
+
+The index of relative exploitable biomass is most often commercial catch-per-unit-effort (CPUE), but could be a fishery-independent biomass index (scientific survey data).
+
+## Assumptions
+
+* Stock size indices should be in terms of biomass (not numbers).
+
+* Stock size indices should be representative of the part of the
+stock vulnerable to the commercial fleets, the so called exploitable stock biomass (ESB).
+
+* Constant catchability coefficient.
+
+* Linear relation among index of relative biomass and total biomass.
+
+* Catch data should be representative of total removals (landings, discards and by-catch).
+
+
+## SPiCT basic run
+
+### Load package
+
+SPiCT model is implemented in **spict** package, hence the following code loads such package. If you don't have it available you must install it by uncommenting the first code line. In the github repository of the package we also find the following guidelines for the use of SPiCT. [![Link]](https://github.com/DTUAqua/spict/blob/master/spict/vignettes/spict_guidelines.md)
+
+```{r,warning=FALSE,message=FALSE}
+#remotes::install_github("tokami/spict/spict", ref="fix130")
+library(spict)
+library(readxl)
+```
+
+
+
+### Load data
+
+We consider the southern hake case study (\textit{Merluccius merluccius} in the Cantabrian Sea and Atlantic Iberian waters). The following block of code reads the data.
+
+* Catch data.
+* Indices from surveys: Portuguese and Spanish surveys.
+* CPUE's (catch-per-unit-of-effort): Spanish trawlers and a combined one from longline and gillnet data.
+
+
+Biomass indices are assumed to be snapshots at given points in time. Therefore, the timing of survey
+indices has to be given as decimal years reflecting the timing of the survey (in southern hake indices 0.83). On the other hand, CPUE is associated with mid-year (0.5).
+
+It is worth mentioning that the survey indices have been recalculated excluding individuals smaller than 20 cm in order to comply with the assumption "Stock size indices should be representative of the part of the
+stock vulnerable to the commercial fleets, the so called exploitable stock biomass (ESB)".
+
+```{r,warning=FALSE,message=FALSE}
+set.seed(1234)
+
+
+# Catches.
+input_catches<-read.csv("data/Tab10.6_init.csv")[, c("years", "catch")]
+
+
+# Indices
+
+input_ind <-read.csv("data/indices 1982-2021.csv")
+
+
+ind_SpCPUE_trawlers=subset(input_ind,input_ind$index=="SpCPUE_trawlers")
+ind_SpCPUE_volpal=subset(input_ind,input_ind$index=="SpCPUE_volpal")
+
+PtGFS <- read_excel("data/Surveys.xlsx",sheet = 1,col_names = FALSE)
+years=as.numeric(PtGFS[1,])
+obs=as.numeric(PtGFS[2,])
+I_P=data.frame(year=years,obs=obs)
+SpGFS <- read_excel("data/Surveys.xlsx",sheet = 2,col_names = FALSE)
+years=as.numeric(SpGFS[1,])
+obs=as.numeric(SpGFS[2,])
+I_S=data.frame(year=years,obs=obs)
+
+```
+
+
+Below, we cut the catch time series for using only data from 1982 to 2021.
+
+```{r}
+
+input_catches=subset(input_catches,input_catches$years>=1982)
+```
+
+The next block of code create the input list containing the entries *obsC* (catch observations), *timeC* (time of catch
+observations), *obsI* (index observations), and *timeI* (time of index observations).
+
+```{r}
+inp1 <- list(timeC =input_catches$years, obsC = input_catches$catch,
+            timeI = list(
+                         I_P$year+0.86, 
+                         I_S$year+0.86,
+                         ind_SpCPUE_trawlers$year+0.5,
+                         ind_SpCPUE_volpal$year+0.5
+                         ),
+            obsI = list(
+                        I_P$obs,
+                        I_S$obs,
+                        ind_SpCPUE_trawlers$obs,
+                        ind_SpCPUE_volpal$obs
+                         ))
+inp1=check.inp(inp1)
+```
+
+The data can be plotted using the command:
+
+```{r}
+plotspict.data(inp1)
+```
+
+### Fitting the model
+
+The model is fitted to data by running:
+
+```{r}
+res1 <- fit.spict(inp1)
+```
+
+The numerical output can be accessed by running summary(res1), but to analyze the results more easily, the graphical output is examined below.
+
+
+Before seeing the plots, consider the following general comments regarding their style and color scheme:
+
+* Estimates (biomass, fishing mortality, catch, production) are shown using blue lines.
+* $95\%$ CIs of absolute quantities are shown using dashed blue lines.
+* $95\%$ CIs of relative biomass and fishing mortality are shown using shaded blue regions.
+* Estimates of reference points ($B_{msy}$ , $F_{msy}$ , $MSY$) are shown using black lines.
+* $95\%$ CIs of reference points are shown using grey shaded regions.
+* The end of the data range is shown using a vertical grey line.
+* Predictions beyond the data range are shown using dotted blue lines.
+
+
+```{r}
+plotspict.biomass(res1)
+#plotspict.bbmsy(res1)
+#plotspict.f(res1, main='', qlegend=FALSE, rel.axes=FALSE, rel.ci=FALSE)
+plotspict.ffmsy(res1, main='', qlegend=FALSE)
+plotspict.catch(res1)
+plotspict.fb(res1)
+```
+
+### Checklist for the acceptance 
+
+1. Convergence of the model fit, which has code 0 if the fit was successful. 
+  
+```{r}
+res1$opt$convergence 
+```
+
+
+2. All variance parameters of the model parameters must be finite.
+
+```{r}
+all(is.finite(res1$sd))  
+```
+
+3. No violation of model assumptions based on one-step-ahead residuals (bias, auto-correlation, normality).
+
+```{r}
+r1 <- calc.osa.resid(res1)
+plotspict.diagnostic(r1)
+```
+
+The first column of the plot contains information related to catch data and the following columns contain information related to the biomass indices data. The rows contain:
+
+* Log of the input data series.
+* One-step-ahead (OSA) residuals with the $p$-value of a test for bias (i.e. that the mean of the residuals is different from zero) in the plot header. If the header is green the test was not significant, otherwise the header would be red.
+* Empirical autocorrelation of the residuals. Two tests for significant autocorrelation are performed. Ljung-Box simultaneous test of multiple lags (here 4) with $p$-value shown in the header, and tests for individual lags shown by dashed horizontal lines in the plot.
+* Tests for normality of the residuals both as a QQ-plot and with a Shapiro test with $p$-value shown in the plot header.
+
+4. Consistent patterns in the retrospective analysis. This means that there is no tendency of consistent under- or overestimation of the relative fishing mortality $F$ and relative biomass $B$ in successive assessment. The retrospective trajectories of those two quantities should be inside the confidence intervals of the base run. (fit <- fit.retro(fit))
+
+```{r}
+r1<- fit.spict(inp1)
+rep1=retro(r1, nretroyear=5)
+plotspict.retro(rep1)
+m1=mohns_rho(rep1, what = c("FFmsy", "BBmsy"));m1
+```
+
+5. Realistic production curve. The shape of the production curve should not be too skewed. $B_{msy}/K$ should be between 0.1 and 0.9. 
+
+```{r}
+plotspict.production(res1)
+```
+
+6. It is prudent to check that the same parameter estimates are obtained if different initial values are used. If the optimum of the objective function is poorly defined, i.e. possibly containing multiple optima, it is possible that different parameter estimates will be returned depending on the initial values. To check whether this is the case run:
+
+
+```{r}
+set.seed(1234)
+a=check.ini(inp1, ntrials=5,verbose = FALSE)
+a$check.ini$propchng
+a$check.ini$inimat
+a$check.ini$resmat
+```
+
+The argument *ntrials* set the number of different initial values to test for. For real data cases 30 trials should be use at minimum. The *propchng* contains the proportional change of the new randomly generated initial value relative to the base initial value, *inimat* contains the new randomly generated initial values, and *resmat* contains the resulting parameter estimates and the distance from the estimated parameter vector to the base parameter vector. The distance should preferably be close to zero. If that is not the case further investigation is required, i.e. inspection of objective function values, differences in results and residual diagnostics etc. 
+
+7. High assessment uncertainty can indicate a lack of contrast in the input data or violation of the ecological model assumptions. The main variance parameters (*logsdb*, *logsdc*, *logsdi*, *logsdf*) should not be unrealistically high. Confidence intervals for *B* and *F* should not span more than 1 order of magnitude:
+
+
+```{r}
+fit=res1
+get.par("logBmBmsy", fit, exp=TRUE, CI = 0.9)
+get.par("logFmFmsy", fit, exp=TRUE, CI = 0.9)
+```
+
+We can also compute AIC value:
+  
+```{r}
+get.AIC(res1)
+```
+
+
+
+
+
+# References
+
+Cousido-Rocha, M., Pennino, M.G., Izquierdo, F. et al. Surplus production models: a practical review of recent approaches. Rev Fish Biol Fisheries 32, 1085–1102 (2022). 
+
+Pedersen, M.W. and Berg, C.W., 2017. A stochastic surplus production model in continuous time. Fish Fish, 18: 226-243
+
+Pella, J. J. and Tomlinson, P. K. 1969. A generalized stock-production model. Bulletin of the709
+Inter-American Tropical Tuna Commission, 13:421–458
+
+Schaefer, M. B. 1954. Some aspects of the dynamics of populations important to the management of742
+the commercial marine fisheries. Bulletin, Inter-American Tropical Tuna Commission, 1:25–56
